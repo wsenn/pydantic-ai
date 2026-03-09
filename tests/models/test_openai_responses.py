@@ -40,7 +40,7 @@ from pydantic_ai import (
 )
 from pydantic_ai.agent import Agent
 from pydantic_ai.builtin_tools import CodeExecutionTool, FileSearchTool, ImageAspectRatio, MCPServerTool, WebSearchTool
-from pydantic_ai.exceptions import ContentFilterError, ModelHTTPError, ModelRetry
+from pydantic_ai.exceptions import ContentFilterError, ModelHTTPError, ModelRetry, UsageLimitExceeded
 from pydantic_ai.messages import (
     BuiltinToolCallEvent,  # pyright: ignore[reportDeprecated]
     BuiltinToolResultEvent,  # pyright: ignore[reportDeprecated]
@@ -49,7 +49,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.output import NativeOutput, PromptedOutput, TextOutput, ToolOutput
 from pydantic_ai.profiles.openai import openai_model_profile
 from pydantic_ai.tools import ToolDefinition
-from pydantic_ai.usage import RequestUsage, RunUsage
+from pydantic_ai.usage import RequestUsage, RunUsage, UsageLimits
 
 from .._inline_snapshot import snapshot
 from ..conftest import IsDatetime, IsFloat, IsInstance, IsInt, IsNow, IsStr, TestEnv, try_import
@@ -10227,20 +10227,22 @@ async def test_openai_responses_refusal_streaming(allow_model_requests: None):
     assert response_msg['provider_details']['refusal'] == "I can't help with that."
 
 
-async def test_openai_responses_count_tokens(allow_model_requests: None):
-    mock_client = MockOpenAIResponses.create_mock(
-        response_message(
-            [
-                ResponseOutputMessage(
-                    id='msg_001',
-                    content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
-                    role='assistant',
-                    status='completed',
-                    type='message',
-                )
-            ]
-        )
+def _simple_text_response() -> Any:
+    return response_message(
+        [
+            ResponseOutputMessage(
+                id='msg_001',
+                content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
+                role='assistant',
+                status='completed',
+                type='message',
+            )
+        ]
     )
+
+
+async def test_openai_responses_count_tokens(allow_model_requests: None):
+    mock_client = MockOpenAIResponses.create_mock(_simple_text_response())
     model = OpenAIResponsesModel('gpt-4o', provider=OpenAIProvider(openai_client=mock_client))
 
     result = await model.count_tokens(
@@ -10258,22 +10260,7 @@ async def test_openai_responses_count_tokens(allow_model_requests: None):
 
 
 async def test_openai_responses_usage_limit_exceeded(allow_model_requests: None):
-    from pydantic_ai.exceptions import UsageLimitExceeded
-    from pydantic_ai.usage import UsageLimits
-
-    mock_client = MockOpenAIResponses.create_mock(
-        response_message(
-            [
-                ResponseOutputMessage(
-                    id='msg_001',
-                    content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
-                    role='assistant',
-                    status='completed',
-                    type='message',
-                )
-            ]
-        )
-    )
+    mock_client = MockOpenAIResponses.create_mock(_simple_text_response())
     model = OpenAIResponsesModel('gpt-4o', provider=OpenAIProvider(openai_client=mock_client))
     agent = Agent(model=model)
 
@@ -10285,21 +10272,7 @@ async def test_openai_responses_usage_limit_exceeded(allow_model_requests: None)
 
 
 async def test_openai_responses_usage_limit_not_exceeded(allow_model_requests: None):
-    from pydantic_ai.usage import UsageLimits
-
-    mock_client = MockOpenAIResponses.create_mock(
-        response_message(
-            [
-                ResponseOutputMessage(
-                    id='msg_001',
-                    content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
-                    role='assistant',
-                    status='completed',
-                    type='message',
-                )
-            ]
-        )
-    )
+    mock_client = MockOpenAIResponses.create_mock(_simple_text_response())
     model = OpenAIResponsesModel('gpt-4o', provider=OpenAIProvider(openai_client=mock_client))
     agent = Agent(model=model)
 
@@ -10317,22 +10290,7 @@ async def test_openai_responses_usage_limit_not_exceeded(allow_model_requests: N
 async def test_openai_responses_count_tokens_http_error(allow_model_requests: None):
     from openai import APIStatusError
 
-    mock_client = MockOpenAIResponses.create_mock(
-        response_message(
-            [
-                ResponseOutputMessage(
-                    id='msg_001',
-                    content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
-                    role='assistant',
-                    status='completed',
-                    type='message',
-                )
-            ]
-        )
-    )
-
-    # Replace the count method to raise an API error
-    original_count = mock_client.responses.input_tokens.count  # type: ignore
+    mock_client = MockOpenAIResponses.create_mock(_simple_text_response())
 
     async def raising_count(**kwargs: Any) -> None:
         import httpx
