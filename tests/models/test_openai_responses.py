@@ -10312,3 +10312,47 @@ async def test_openai_responses_usage_limit_not_exceeded(allow_model_requests: N
     # Both count_tokens and create calls should have been made
     response_kwargs = get_mock_responses_kwargs(mock_client)
     assert len(response_kwargs) == 2
+
+
+async def test_openai_responses_count_tokens_http_error(allow_model_requests: None):
+    from openai import APIStatusError
+
+    mock_client = MockOpenAIResponses.create_mock(
+        response_message(
+            [
+                ResponseOutputMessage(
+                    id='msg_001',
+                    content=cast(list[Content], [ResponseOutputText(text='hello', type='output_text', annotations=[])]),
+                    role='assistant',
+                    status='completed',
+                    type='message',
+                )
+            ]
+        )
+    )
+
+    # Replace the count method to raise an API error
+    original_count = mock_client.responses.input_tokens.count  # type: ignore
+
+    async def raising_count(**kwargs: Any) -> None:
+        import httpx
+
+        raise APIStatusError(
+            message='Not Found',
+            response=httpx.Response(status_code=404, request=httpx.Request('POST', 'https://api.openai.com/v1')),
+            body={'error': {'message': 'model not found'}},
+        )
+
+    mock_client.responses.input_tokens.count = raising_count  # type: ignore
+
+    model = OpenAIResponsesModel('gpt-4o-nonexistent', provider=OpenAIProvider(openai_client=mock_client))
+
+    with pytest.raises(ModelHTTPError) as exc_info:
+        await model.count_tokens(
+            [ModelRequest.user_text_prompt('hello')],
+            None,
+            ModelRequestParameters(),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.model_name == 'gpt-4o-nonexistent'

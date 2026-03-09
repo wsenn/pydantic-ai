@@ -104,16 +104,14 @@ class MockOpenAIResponses:
     response_kwargs: list[dict[str, Any]] = field(default_factory=list[dict[str, Any]])
     base_url: str = 'https://api.openai.com/v1'
 
+    async def _count_input_tokens(self, **kwargs: Any) -> InputTokenCountResponse:
+        self.response_kwargs.append({k: v for k, v in kwargs.items() if v is not NOT_GIVEN})
+        return InputTokenCountResponse(input_tokens=10, object='response.input_tokens')
+
     @cached_property
     def responses(self) -> Any:
-        mock = self
-
-        class InputTokens:
-            async def count(self_inner: Any, **kwargs: Any) -> InputTokenCountResponse:
-                mock.response_kwargs.append({k: v for k, v in kwargs.items() if v is not NOT_GIVEN})
-                return InputTokenCountResponse(input_tokens=10, object='response.input_tokens')
-
-        return type('Responses', (), {'create': self.responses_create, 'input_tokens': InputTokens()})
+        input_tokens = type('InputTokens', (), {'count': self._count_input_tokens})()
+        return type('Responses', (), {'create': self.responses_create, 'input_tokens': input_tokens})
 
     @classmethod
     def create_mock(cls, responses: MockResponse | Sequence[MockResponse]) -> AsyncOpenAI:
