@@ -105,7 +105,7 @@ class MockOpenAIResponses:
     base_url: str = 'https://api.openai.com/v1'
 
     async def _count_input_tokens(self, **kwargs: Any) -> InputTokenCountResponse:
-        self.response_kwargs.append({k: v for k, v in kwargs.items() if v is not NOT_GIVEN})
+        self.response_kwargs.append({k: v for k, v in kwargs.items() if v not in (NOT_GIVEN, OMIT)})
         return InputTokenCountResponse(input_tokens=10, object='response.input_tokens')
 
     @cached_property
@@ -127,7 +127,7 @@ class MockOpenAIResponses:
     async def responses_create(  # pragma: lax no cover
         self, *_args: Any, stream: bool = False, **kwargs: Any
     ) -> responses.Response | MockAsyncStream[MockResponseStreamEvent]:
-        self.response_kwargs.append({k: v for k, v in kwargs.items() if v is not NOT_GIVEN})
+        self.response_kwargs.append({k: v for k, v in kwargs.items() if v not in (NOT_GIVEN, OMIT)})
 
         if stream:
             assert self.stream is not None, 'you can only used `stream=True` if `stream` is provided'

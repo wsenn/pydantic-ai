@@ -1425,6 +1425,8 @@ class OpenAIResponsesModel(Model):
         )
         ms = cast(OpenAIResponsesModelSettings, model_settings or {})
         params = await self._build_request_params(messages, ms, model_request_parameters)
+        _drop_sampling_params_for_reasoning(params.profile, ms)
+        _drop_unsupported_params(params.profile, ms)
 
         try:
             extra_headers = dict(ms.get('extra_headers', {}))

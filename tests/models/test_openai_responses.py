@@ -77,6 +77,7 @@ with try_import() as imports_successful:
         _resolve_openai_image_generation_size,  # pyright: ignore[reportPrivateUsage]
     )
     from pydantic_ai.providers.anthropic import AnthropicProvider
+    from pydantic_ai.providers.cerebras import CerebrasProvider
     from pydantic_ai.providers.openai import OpenAIProvider
 
 pytestmark = [
@@ -10257,6 +10258,21 @@ async def test_openai_responses_count_tokens(allow_model_requests: None):
     assert len(response_kwargs) == 1
     assert 'model' in response_kwargs[0]
     assert 'input' in response_kwargs[0]
+
+
+async def test_openai_responses_count_tokens_omits_unsupported_provider_settings(allow_model_requests: None):
+    mock_client = MockOpenAIResponses.create_mock(_simple_text_response())
+    model = OpenAIResponsesModel('gpt-oss-120b', provider=CerebrasProvider(openai_client=mock_client))
+
+    await model.count_tokens(
+        [ModelRequest.user_text_prompt('hello')],
+        OpenAIResponsesModelSettings(parallel_tool_calls=False),
+        ModelRequestParameters(),
+    )
+
+    response_kwargs = get_mock_responses_kwargs(mock_client)
+    assert len(response_kwargs) == 1
+    assert 'parallel_tool_calls' not in response_kwargs[0]
 
 
 async def test_openai_responses_usage_limit_exceeded(allow_model_requests: None):
